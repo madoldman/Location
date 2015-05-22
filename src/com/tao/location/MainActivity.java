@@ -2,6 +2,7 @@ package com.tao.location;
 
 import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
@@ -32,6 +33,8 @@ import android.app.ProgressDialog;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.DialogInterface.OnClickListener;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.drawable.BitmapDrawable;
 import android.os.Bundle;
 import android.os.Environment;
@@ -67,6 +70,7 @@ import com.baidu.mapapi.search.geocode.GeoCoder;
 import com.baidu.mapapi.search.geocode.OnGetGeoCoderResultListener;
 import com.baidu.mapapi.search.geocode.ReverseGeoCodeOption;
 import com.baidu.mapapi.search.geocode.ReverseGeoCodeResult;
+import com.googlecode.tesseract.android.TessBaseAPI;
 
 @SuppressLint("InflateParams")
 @SuppressWarnings("deprecation")
@@ -117,6 +121,26 @@ public class MainActivity extends Activity {
 						dialog.cancel();
 					}
 				}).show();
+				TessBaseAPI baseApi=new TessBaseAPI();
+				baseApi.init("/mnt/sdcard", "eng");
+				
+				BitmapFactory.Options options = new BitmapFactory.Options();
+				options.inSampleSize = 1;
+				FileInputStream fis;
+				try {
+					fis = new FileInputStream(FILEPATH+"/vcode.gif");
+					Bitmap bitmap = BitmapFactory.decodeStream(fis, null, options);
+					fis.close();
+					
+					baseApi.setImage(bitmap);
+					Toast.makeText(getApplicationContext(), "code: "+baseApi.getUTF8Text(), Toast.LENGTH_SHORT).show();
+					baseApi.clear();
+					baseApi.end();
+				} catch (Exception e) {
+					e.printStackTrace();
+					writeToLog(e.getMessage());
+					Toast.makeText(getApplicationContext(), "image failed: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+				}
 				break;
 			case MSG_POSITION_GOTTEN:
 				try {
@@ -300,7 +324,7 @@ public class MainActivity extends Activity {
 				} catch (Exception e) {
 					e.printStackTrace();
 					message.what = MSG_ERROR;
-					message.obj = "获取验证码图片失败";
+					message.obj = "获取验证码图片失败:"+e.getMessage();
 				} finally {
 					if (connection != null) connection.disconnect();
 					handler.sendMessage(message);
