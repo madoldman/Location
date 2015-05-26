@@ -2,7 +2,6 @@ package com.tao.location;
 
 import java.io.BufferedReader;
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
@@ -35,7 +34,6 @@ import android.content.DialogInterface;
 import android.content.DialogInterface.OnClickListener;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
-import android.graphics.drawable.BitmapDrawable;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
@@ -70,7 +68,6 @@ import com.baidu.mapapi.search.geocode.GeoCoder;
 import com.baidu.mapapi.search.geocode.OnGetGeoCoderResultListener;
 import com.baidu.mapapi.search.geocode.ReverseGeoCodeOption;
 import com.baidu.mapapi.search.geocode.ReverseGeoCodeResult;
-import com.googlecode.tesseract.android.TessBaseAPI;
 
 @SuppressLint("InflateParams")
 @SuppressWarnings("deprecation")
@@ -108,41 +105,37 @@ public class MainActivity extends Activity {
 				getVCodeImage();
 				break;
 			case MSG_VCODE_GOTTEN:
-				progressDialog.cancel();
 				View v = getLayoutInflater().inflate(R.layout.dialog, null);
 				ImageView vcodeImage = (ImageView) v.findViewById(R.id.vcodeImg);
-				vcodeImage.setImageDrawable(new BitmapDrawable(FILEPATH+"/vcode.gif"));
+				BitmapFactory.Options options = new BitmapFactory.Options();
+				options.inJustDecodeBounds = false;
+				Bitmap src = BitmapFactory.decodeFile(FILEPATH+"/vcode.gif", options);
+				if (src == null) {
+					getVCodeImage();
+					return;
+				}
+				Bitmap output = Bitmap.createScaledBitmap(src, options.outWidth*2, options.outHeight*2, true);
+				if (output == null) {
+					getVCodeImage();
+					return;
+				}
+				vcodeImage.setImageBitmap(output);
+				progressDialog.cancel();
 				final EditText vcodeEdit = (EditText) v.findViewById(R.id.vcodeEdit);
-				new AlertDialog.Builder(MainActivity.this).setView(v).setPositiveButton("确定", new OnClickListener() {
+				AlertDialog dialog = new AlertDialog.Builder(MainActivity.this).setPositiveButton("确定", new OnClickListener() {
 					@Override
 					public void onClick(DialogInterface dialog, int which) {
 						vcode = vcodeEdit.getText().toString();
 						getLatAndLng();
 						dialog.cancel();
+						progressDialog.show();
 					}
-				}).show();
-				TessBaseAPI baseApi=new TessBaseAPI();
-				baseApi.init("/mnt/sdcard", "eng");
-				
-				BitmapFactory.Options options = new BitmapFactory.Options();
-				options.inSampleSize = 1;
-				FileInputStream fis;
-				try {
-					fis = new FileInputStream(FILEPATH+"/vcode.gif");
-					Bitmap bitmap = BitmapFactory.decodeStream(fis, null, options);
-					fis.close();
-					
-					baseApi.setImage(bitmap);
-					Toast.makeText(getApplicationContext(), "code: "+baseApi.getUTF8Text(), Toast.LENGTH_SHORT).show();
-					baseApi.clear();
-					baseApi.end();
-				} catch (Exception e) {
-					e.printStackTrace();
-					writeToLog(e.getMessage());
-					Toast.makeText(getApplicationContext(), "image failed: " + e.getMessage(), Toast.LENGTH_SHORT).show();
-				}
+				}).create();
+				dialog.setView(v);
+				dialog.show();
 				break;
 			case MSG_POSITION_GOTTEN:
+				progressDialog.cancel();
 				try {
 					JSONObject obj = new JSONObject(msg.obj.toString());
 					
@@ -155,6 +148,12 @@ public class MainActivity extends Activity {
 						double lat = location.getDouble("lat");
 						address = location.getString("addr");
 						LatLng ptCenter = new LatLng(lat, lng);
+						
+						mBaiduMap.clear();
+						mBaiduMap.addOverlay(new MarkerOptions().position(ptCenter)
+								.icon(BitmapDescriptorFactory
+										.fromResource(R.drawable.latlng)));
+						mBaiduMap.setMapStatus(MapStatusUpdateFactory.newLatLng(ptCenter));
 						mGeoCoder.reverseGeoCode(new ReverseGeoCodeOption().location(ptCenter));
 					}
 					
@@ -179,7 +178,7 @@ public class MainActivity extends Activity {
 		mMapView = (MapView) findViewById(R.id.bmapView);
 		mBaiduMap = mMapView.getMap();
 		mBaiduMap.setMapType(BaiduMap.MAP_TYPE_NORMAL);
-		mBaiduMap.setMapStatus(MapStatusUpdateFactory.zoomTo(17));
+		mBaiduMap.setMapStatus(MapStatusUpdateFactory.zoomTo(16));
 		
 		//开启定位图层
 		mBaiduMap.setMyLocationEnabled(true);
@@ -216,6 +215,7 @@ public class MainActivity extends Activity {
 					Toast.makeText(MainActivity.this, "没有找到指定经纬度的相关信息！", Toast.LENGTH_LONG).show();
 					return;
 				}
+				
 				mGeoCoder.geocode(new GeoCodeOption().city(result.getAddressDetail().city).address(address));
 			}
 			public void onGetGeoCodeResult(GeoCodeResult result) {
@@ -223,7 +223,7 @@ public class MainActivity extends Activity {
 					Toast.makeText(MainActivity.this, "没有搜索到指定地址信息！", Toast.LENGTH_LONG).show();
 					return;
 				}
-				mBaiduMap.clear();
+				
 				mBaiduMap.addOverlay(new MarkerOptions().position(result.getLocation())
 						.icon(BitmapDescriptorFactory
 								.fromResource(R.drawable.location)));
@@ -282,7 +282,7 @@ public class MainActivity extends Activity {
 					token = connection.getHeaderField("Set-Cookie");
 					start = token.indexOf("SessionId=") + 10;
 					end = token.indexOf(";", start);
-					sessionId = token.substring(start, end);
+					sessionId = token.substring(start, end);	
 					
 					message.what = MSG_TOKEN_GOTTEN;
 					

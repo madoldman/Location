@@ -7,13 +7,15 @@
     <ImageView 
         android:id="@+id/vcodeImg"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="0dp"	
+        android:layout_weight="2"
         android:contentDescription="@string/app_name"/>
     
     <EditText 
         android:id="@+id/vcodeEdit"
         android:hint="@string/hint"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"/>
+        android:layout_weight="1"
+        android:layout_height="0dp"/>
 
 </LinearLayout>
