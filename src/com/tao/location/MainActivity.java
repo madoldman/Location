@@ -39,6 +39,7 @@ import android.os.Environment;
 import android.os.Handler;
 import android.os.Message;
 import android.telephony.TelephonyManager;
+import android.telephony.cdma.CdmaCellLocation;
 import android.telephony.gsm.GsmCellLocation;
 import android.view.View;
 import android.view.Window;
@@ -89,7 +90,8 @@ public class MainActivity extends Activity {
 	
 	private boolean tokenHasGotten = false;
 	private String tokenLw;    //访问http://www.haoservice.com/freeLocation/时获取响应头里面的Set-Cookie
-	private String tokenForm;  //取得http://www.haoservice.com/freeLocation/页面中表单的隐藏输入框的值
+	private String tokenFormForGSM;  //取得http://www.haoservice.com/freeLocation/页面中表单的隐藏输入框的值
+	private String tokenFormForCDMA;
 	private String sessionId;  //访问http://www.haoservice.com/Handle/ValidateCode.ashx获取响应头里的Set-Cookie
 	private String vcode;      //用户通过对话框输入的验证码
 	private String address;    //服务器返回的地址信息
@@ -114,7 +116,7 @@ public class MainActivity extends Activity {
 					getVCodeImage();
 					return;
 				}
-				Bitmap output = Bitmap.createScaledBitmap(src, options.outWidth*2, options.outHeight*2, true);
+				Bitmap output = Bitmap.createScaledBitmap(src, options.outWidth*3, options.outHeight*3, true);
 				if (output == null) {
 					getVCodeImage();
 					return;
@@ -162,7 +164,7 @@ public class MainActivity extends Activity {
 				}
 				break;
 			case MSG_ERROR:
-				Toast.makeText(getApplicationContext(), msg.obj.toString(), Toast.LENGTH_SHORT).show();
+				Toast.makeText(getApplicationContext(), msg.obj.toString(), Toast.LENGTH_LONG).show();
 				break;
 			}
 		}
@@ -274,7 +276,12 @@ public class MainActivity extends Activity {
 					start = page.indexOf("__RequestVerificationToken");
 					start = page.indexOf("value=", start) + 7;
 					end = page.indexOf("\"", start);
-					tokenForm = page.substring(start, end);
+					tokenFormForGSM = page.substring(start, end);
+					
+					start = page.indexOf("__RequestVerificationToken", end);
+					start = page.indexOf("value=", start) + 7;
+					end = page.indexOf("\"", start);
+					tokenFormForCDMA = page.substring(start, end);
 					
 					url = new URL("http://www.haoservice.com/Handle/ValidateCode.ashx");
 					connection = (HttpURLConnection) url.openConnection();
@@ -289,7 +296,7 @@ public class MainActivity extends Activity {
 				} catch (Exception e) {
 					e.printStackTrace();
 					message.what = MSG_ERROR;
-					message.obj = "获取Token失败";
+					message.obj = "获取Token失败"+e.getMessage();
 				} finally {
 					if (connection != null) connection.disconnect();
 					handler.sendMessage(message);
@@ -339,7 +346,43 @@ public class MainActivity extends Activity {
 				Message message = new Message();
 				try {
 					HttpClient client = new DefaultHttpClient();
-					HttpPost post = new HttpPost("http://www.haoservice.com/home/cellapi");
+					
+					TelephonyManager tm = (TelephonyManager) getSystemService(Context.TELEPHONY_SERVICE); 
+					int cid = 0, lac = 0;
+					List<NameValuePair> urlParameters = null;
+					HttpPost post = null;
+					if (tm.getPhoneType() == TelephonyManager.PHONE_TYPE_GSM) {
+						GsmCellLocation location = (GsmCellLocation) tm.getCellLocation();
+						cid = location.getCid();
+						lac = location.getLac();
+						
+						post = new HttpPost("http://www.haoservice.com/home/cellapi");
+						urlParameters = new ArrayList<NameValuePair>();
+						urlParameters.add(new BasicNameValuePair("__RequestVerificationToken", tokenFormForGSM));
+						urlParameters.add(new BasicNameValuePair("mcc", "460"));
+						urlParameters.add(new BasicNameValuePair("mnc", "00"));
+						urlParameters.add(new BasicNameValuePair("lac", Integer.toString(lac)));
+						urlParameters.add(new BasicNameValuePair("cid", Integer.toString(cid)));
+						urlParameters.add(new BasicNameValuePair("hex", "10"));
+						urlParameters.add(new BasicNameValuePair("ValidateCode", vcode));
+					} else {
+						CdmaCellLocation location = (CdmaCellLocation) tm.getCellLocation();
+						lac = location.getNetworkId();
+						cid = location.getBaseStationId();
+						message.what = MSG_ERROR;
+						message.obj = "nid:"+lac+" bid:"+cid;
+						handler.sendMessage(message);
+						
+						post = new HttpPost("http://www.haoservice.com/home/cdmaapi");
+						urlParameters = new ArrayList<NameValuePair>();
+						urlParameters.add(new BasicNameValuePair("__RequestVerificationToken", tokenFormForCDMA));
+						urlParameters.add(new BasicNameValuePair("mcc", "460"));
+						urlParameters.add(new BasicNameValuePair("sid", "14175"));
+						urlParameters.add(new BasicNameValuePair("nid", Integer.toString(lac)));
+						urlParameters.add(new BasicNameValuePair("bid", Integer.toString(cid)));
+						urlParameters.add(new BasicNameValuePair("hex", "10"));
+						urlParameters.add(new BasicNameValuePair("ValidateCode", vcode));
+					}
 					
 					post.setHeader("Host", "www.haoservice.com");
 					post.setHeader("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8");
@@ -347,19 +390,6 @@ public class MainActivity extends Activity {
 							"ASP.NET_SessionId=", sessionId,
 							"__RequestVerificationToken_Lw__=", tokenLw));
 					
-					TelephonyManager tm = (TelephonyManager) getSystemService(Context.TELEPHONY_SERVICE); 
-					GsmCellLocation location = (GsmCellLocation) tm.getCellLocation();
-					int cid = location.getCid();
-					int lac = location.getLac();
-					
-					List<NameValuePair> urlParameters = new ArrayList<NameValuePair>();
-					urlParameters.add(new BasicNameValuePair("__RequestVerificationToken", tokenForm));
-					urlParameters.add(new BasicNameValuePair("mcc", "460"));
-					urlParameters.add(new BasicNameValuePair("mnc", "00"));
-					urlParameters.add(new BasicNameValuePair("lac", Integer.toString(lac)));
-					urlParameters.add(new BasicNameValuePair("cid", Integer.toString(cid)));
-					urlParameters.add(new BasicNameValuePair("hex", "10"));
-					urlParameters.add(new BasicNameValuePair("ValidateCode", vcode));
 					
 					post.setEntity(new UrlEncodedFormEntity(urlParameters));
 					HttpResponse response = client.execute(post);
@@ -380,7 +410,7 @@ public class MainActivity extends Activity {
 				} catch (Exception e) {
 					e.printStackTrace();
 					message.what = MSG_ERROR;
-					message.obj = "获取经纬度失败";
+					message.obj = "获取经纬度失败"+e.getMessage();
 				} finally {
 					handler.sendMessage(message);
 				}
