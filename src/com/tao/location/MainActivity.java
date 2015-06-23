@@ -69,6 +69,7 @@ import com.baidu.mapapi.search.geocode.GeoCoder;
 import com.baidu.mapapi.search.geocode.OnGetGeoCoderResultListener;
 import com.baidu.mapapi.search.geocode.ReverseGeoCodeOption;
 import com.baidu.mapapi.search.geocode.ReverseGeoCodeResult;
+import com.example.captcha.Captcha;
 
 @SuppressLint("InflateParams")
 @SuppressWarnings("deprecation")
@@ -107,34 +108,71 @@ public class MainActivity extends Activity {
 				getVCodeImage();
 				break;
 			case MSG_VCODE_GOTTEN:
-				View v = getLayoutInflater().inflate(R.layout.dialog, null);
-				ImageView vcodeImage = (ImageView) v.findViewById(R.id.vcodeImg);
+//				View v = getLayoutInflater().inflate(R.layout.dialog, null);
+//				ImageView vcodeImage = (ImageView) v.findViewById(R.id.vcodeImg);
+//				BitmapFactory.Options options = new BitmapFactory.Options();
+//				options.inJustDecodeBounds = false;
+//				Bitmap src = BitmapFactory.decodeFile(FILEPATH+"/vcode.gif", options);
+//				if (src == null) {
+//					getVCodeImage();
+//					return;
+//				}
+//				Bitmap output = Bitmap.createScaledBitmap(src, options.outWidth*3, options.outHeight*3, true);
+//				if (output == null) {
+//					getVCodeImage();
+//					return;
+//				}
+//				vcodeImage.setImageBitmap(output);
+//				progressDialog.cancel();
+//				final EditText vcodeEdit = (EditText) v.findViewById(R.id.vcodeEdit);
+//				AlertDialog dialog = new AlertDialog.Builder(MainActivity.this).setPositiveButton("确定", new OnClickListener() {
+//					@Override
+//					public void onClick(DialogInterface dialog, int which) {
+//						vcode = vcodeEdit.getText().toString();
+//						getLatAndLng();
+//						dialog.cancel();
+//						progressDialog.show();
+//					}
+//				}).create();
+//				dialog.setView(v);
+//				dialog.show();
+				
 				BitmapFactory.Options options = new BitmapFactory.Options();
-				options.inJustDecodeBounds = false;
 				Bitmap src = BitmapFactory.decodeFile(FILEPATH+"/vcode.gif", options);
 				if (src == null) {
 					getVCodeImage();
 					return;
 				}
-				Bitmap output = Bitmap.createScaledBitmap(src, options.outWidth*3, options.outHeight*3, true);
-				if (output == null) {
-					getVCodeImage();
-					return;
+				byte data[];
+				int i, j;
+				int pixel;
+				
+				int height = src.getHeight();
+				int width = src.getWidth();
+				
+				if ( width % 4 != 0 )
+				{
+					width = (( width / 4 ) + 1) * 4;
 				}
-				vcodeImage.setImageBitmap(output);
-				progressDialog.cancel();
-				final EditText vcodeEdit = (EditText) v.findViewById(R.id.vcodeEdit);
-				AlertDialog dialog = new AlertDialog.Builder(MainActivity.this).setPositiveButton("确定", new OnClickListener() {
-					@Override
-					public void onClick(DialogInterface dialog, int which) {
-						vcode = vcodeEdit.getText().toString();
-						getLatAndLng();
-						dialog.cancel();
-						progressDialog.show();
+				
+				int widthStep = width * 3;
+				
+				data = new byte[height * widthStep];
+				
+				for ( i = 0; i < src.getHeight(); i++ )
+				{
+					for ( j = 0; j < src.getWidth(); j++ )
+					{
+						pixel = src.getPixel(j, i);
+						data[i*widthStep+3*j]   = (byte)(pixel & 0x000000ff);
+						data[i*widthStep+3*j+1] = (byte)((pixel & 0x0000ff00) >> 8);
+						data[i*widthStep+3*j+2] = (byte)((pixel & 0x00ff0000) >> 16);
 					}
-				}).create();
-				dialog.setView(v);
-				dialog.show();
+				}
+				
+				vcode = Captcha.getVCodeContent(data, width, height, widthStep);
+				Toast.makeText(MainActivity.this, vcode, Toast.LENGTH_LONG).show();
+				getLatAndLng();
 				break;
 			case MSG_POSITION_GOTTEN:
 				progressDialog.cancel();
@@ -349,6 +387,7 @@ public class MainActivity extends Activity {
 					
 					TelephonyManager tm = (TelephonyManager) getSystemService(Context.TELEPHONY_SERVICE); 
 					int cid = 0, lac = 0;
+					int sid = 0, nid = 0, bid = 0;
 					List<NameValuePair> urlParameters = null;
 					HttpPost post = null;
 					if (tm.getPhoneType() == TelephonyManager.PHONE_TYPE_GSM) {
@@ -367,19 +406,21 @@ public class MainActivity extends Activity {
 						urlParameters.add(new BasicNameValuePair("ValidateCode", vcode));
 					} else {
 						CdmaCellLocation location = (CdmaCellLocation) tm.getCellLocation();
-						lac = location.getNetworkId();
-						cid = location.getBaseStationId();
+						sid = location.getSystemId();
+						nid = location.getNetworkId();
+						bid = location.getBaseStationId();
+						
 						message.what = MSG_ERROR;
-						message.obj = "nid:"+lac+" bid:"+cid;
+						message.obj = "sid:"+sid+" nid:"+lac+" bid:"+cid;
 						handler.sendMessage(message);
 						
 						post = new HttpPost("http://www.haoservice.com/home/cdmaapi");
 						urlParameters = new ArrayList<NameValuePair>();
 						urlParameters.add(new BasicNameValuePair("__RequestVerificationToken", tokenFormForCDMA));
 						urlParameters.add(new BasicNameValuePair("mcc", "460"));
-						urlParameters.add(new BasicNameValuePair("sid", "14175"));
-						urlParameters.add(new BasicNameValuePair("nid", Integer.toString(lac)));
-						urlParameters.add(new BasicNameValuePair("bid", Integer.toString(cid)));
+						urlParameters.add(new BasicNameValuePair("sid", Integer.toString(sid)));
+						urlParameters.add(new BasicNameValuePair("nid", Integer.toString(nid)));
+						urlParameters.add(new BasicNameValuePair("bid", Integer.toString(bid)));
 						urlParameters.add(new BasicNameValuePair("hex", "10"));
 						urlParameters.add(new BasicNameValuePair("ValidateCode", vcode));
 					}
